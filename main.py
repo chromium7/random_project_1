@@ -1,14 +1,14 @@
-from bs4 import BeautifulSoup
 from PIL import ImageTk, Image
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import tkinter as tk
-import matplotlib as plt
 import pandas as pd
+import pandastable as pdt
 import csv
 import requests
 import smtplib
 import datetime
 import json
+import os
 
 """
 purpose of this program:
@@ -38,6 +38,7 @@ wt_dict = {
     "Rain": rain_ico
 }
 
+
 # Main application window
 class mainApp(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -51,19 +52,19 @@ class mainApp(tk.Tk):
         self.resizable(0, 0)
 
         # Frame for holding all the pages of in the app
-        container = tk.Frame(self, borderwidth = 0, highlightthickness = 0)
-        container.pack(side= "top", fill= "both")
-        container.grid_rowconfigure(0, weight= 1)
-        container.grid_columnconfigure(0, weight= 1)
+        container = tk.Frame(self, borderwidth=0, highlightthickness=0)
+        container.pack(side="top", fill="both")
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
 
         # Generate all pages simultaneously and store it to a dictionary
         # allows showing the page quickly and not loading the page every single time it is called
         self.frames = {}
-        for page in [start_page, email_page]:
+        for page in [start_page, email_page, spreadsheet_page]:
             page_name = page.__name__
-            frame = page(parent= container, controller= self, WIDTH= s_width, HEIGHT= s_height)
+            frame = page(parent=container, controller=self, WIDTH=s_width, HEIGHT=s_height)
             self.frames[page_name] = frame
-            frame.grid(row=0, column=0, sticky= tk.NSEW)
+            frame.grid(row=0, column=0, sticky=tk.NSEW)
 
         self.showframe("start_page")
 
@@ -72,7 +73,7 @@ class mainApp(tk.Tk):
         frame.tkraise()
 
 
-# Represents the starting page
+# Starting page
 class start_page(tk.Frame):
     def __init__(self, parent, controller, WIDTH, HEIGHT):
         tk.Frame.__init__(self, parent, borderwidth=0, highlightthickness=0)
@@ -123,8 +124,11 @@ class start_page(tk.Frame):
                                 text=f"Good {get_time().lower()}, Captain Chromium!")
         self.canvas.create_text(20, 90, anchor=tk.NW, fill=f"{c1}", font="Times 18",
                                 text="What would you like to do on this fine ass day?")
-        send_email_btn = tk.Button(self, text= "Send an email", command = lambda: self.controller.showframe("email_page"))
-        self.canvas.create_window(20, 150, anchor= tk.NW, window= send_email_btn)
+        spreadsheet_btn = tk.Button(self, text="Analyze a file",
+                                    command=lambda: self.controller.showframe("spreadsheet_page"))
+        self.canvas.create_window(20, 150, anchor=tk.NW, window=spreadsheet_btn)
+        send_email_btn = tk.Button(self, text="Send an email", command=lambda: self.controller.showframe("email_page"))
+        self.canvas.create_window(20, 190, anchor=tk.NW, window=send_email_btn)
 
         # Date and weather label
         weather_txt = self.canvas.create_text(self.width - 260, self.height - 60, anchor=tk.NW, fill=f"{c1}",
@@ -141,16 +145,16 @@ class start_page(tk.Frame):
         self.canvas.tag_lower(weather_txt_bg, weather_txt)
         self.canvas.tag_lower(weather_icon_bg, weather_icon)
 
+
 # Page for sending email
 class email_page(tk.Frame):
     def __init__(self, parent, controller, WIDTH, HEIGHT):
-        tk.Frame.__init__(self, parent, borderwidth= 0, highlightthickness = 0)
+        tk.Frame.__init__(self, parent, borderwidth=0, highlightthickness=0)
         self.controller = controller
         self.width = WIDTH
         self.height = HEIGHT
         self.canvas = self.create_background()
         self.create_widgets()
-
 
     def create_background(self):
         self.canvas = tk.Canvas(self, width=self.width, height=self.height)
@@ -160,8 +164,17 @@ class email_page(tk.Frame):
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.bg_img)
         return self.canvas
 
-
     def create_widgets(self):
+
+        def focus_in(widget, default):
+            if widget.get() == default:
+                widget.delete(0, "end")
+                widget.config(fg="black")
+
+        def focus_out(widget, default):
+            if widget.get() == "":
+                widget.config(fg="grey")
+                widget.insert(0, default)
 
         def send():
             recipient = recipient_var.get()
@@ -176,47 +189,115 @@ class email_page(tk.Frame):
             else:
                 pass
 
-        back_button = tk.Button(self, text= "<", font = "Times 8",
-                                command= lambda: self.controller.showframe("start_page"))
-        self.canvas.create_window(0, 0, anchor= tk.NW, window= back_button)
-        title_txt = self.canvas.create_text(20, 40, anchor= tk.NW, font= "Times 36", text= "SEND EMAIL  ")
+        back_button = tk.Button(self, text="<", font="Times 8",
+                                command=lambda: self.controller.showframe("start_page"))
+        self.canvas.create_window(0, 0, anchor=tk.NW, window=back_button)
+        title_txt = self.canvas.create_text(20, 40, anchor=tk.NW, font="Times 36", text="SEND EMAIL  ")
         title_txt_bbox = self.canvas.bbox(title_txt)
-        title_txt_bg = self.canvas.create_rectangle(title_txt_bbox, outline = "", fill = "white")
+        title_txt_bg = self.canvas.create_rectangle(title_txt_bbox, outline="", fill="white")
         self.canvas.tag_lower(title_txt_bg, title_txt)
 
         # Entry boxes for email content
         recipient_var = tk.StringVar()
         subject_var = tk.StringVar()
-        recipient_entry = tk.Entry(self, font = "Times 14", textvariable = recipient_var, width = 30)
-        subject_entry = tk.Entry(self, font = "Times 14", textvariable = subject_var, width =30)
-        body_text = tk.Text(self, font = "Times 12", cursor= "cross")
-        send_button = tk.Button(self, text= "Send Email", command = send)
-        self.canvas.create_text(20, 120, anchor= tk.NW, text="Recipient",font = "Times 14", fill= "white")
-        self.canvas.create_window(100, 120, anchor= tk.NW, window= recipient_entry)
-        self.canvas.create_text(20, 160, anchor = tk.NW, text= "Subject", font = "Times 14", fill= "white")
-        self.canvas.create_window(100, 160, anchor= tk.NW, window= subject_entry)
-        self.canvas.create_text(20, 210, anchor = tk.NW, text= "Body", font = "Times 12", fill= "white")
-        self.canvas.create_window(20, 240, anchor=tk.NW, window= body_text, height = 150, width = 600)
-        self.canvas.create_window(20, 400, anchor = tk.NW, window = send_button)
+        recipient_entry = tk.Entry(self, font="Times 14", textvariable=recipient_var, width=30, fg="grey")
+        subject_entry = tk.Entry(self, font="Times 14", textvariable=subject_var, width=30, fg="grey")
+        body_text = tk.Text(self, font="Times 12", cursor="cross")
+        send_button = tk.Button(self, text="Send Email", command=send)
 
+        # Default grey text
+        recipient_entry.insert(0, "example123@gmail.com")
+        recipient_entry.bind("<FocusIn>", lambda event: focus_in(recipient_entry, "example123@gmail.com"))
+        recipient_entry.bind("<FocusOut>", lambda event: focus_out(recipient_entry, "example123@gmail.com"))
+        subject_entry.insert(0, "Yohny Yoestar")
+        subject_entry.bind("<FocusIn>", lambda event: focus_in(subject_entry, "Yohny Yoestar"))
+        subject_entry.bind("<FocusOut>", lambda event: focus_out(subject_entry, "Yohny Yoestar"))
+
+        # Placing the widgets
+        self.canvas.create_text(20, 120, anchor=tk.NW, text="Recipient", font="Times 14", fill="white")
+        self.canvas.create_window(100, 120, anchor=tk.NW, window=recipient_entry)
+        self.canvas.create_text(20, 160, anchor=tk.NW, text="Subject", font="Times 14", fill="white")
+        self.canvas.create_window(100, 160, anchor=tk.NW, window=subject_entry)
+        self.canvas.create_text(20, 210, anchor=tk.NW, text="Body", font="Times 12", fill="white")
+        self.canvas.create_window(20, 240, anchor=tk.NW, window=body_text, height=200, width=600)
+        self.canvas.create_window(20, 450, anchor=tk.NW, window=send_button)
 
 
 # Page for analyzing spreadsheet
 class spreadsheet_page(tk.Frame):
     def __init__(self, parent, controller, WIDTH, HEIGHT):
-        tk.Frame.__init__(self, parent, borderwidth= 0, highlightthickness= 0)
+        tk.Frame.__init__(self, parent, borderwidth=0, highlightthickness=0)
         self.controller = controller
         self.width = WIDTH
         self.height = HEIGHT
         self.canvas = self.create_background()
+        self.create_widgets()
 
     def create_background(self):
         self.canvas = tk.Canvas(self, width=self.width, height=self.height)
-        self.canvas.pack()
         bg = bg_dict.get(get_time())
         self.bg_img = ImageTk.PhotoImage(bg.resize((self.width, self.height), Image.ANTIALIAS))
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.bg_img)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
         return self.canvas
+
+
+    def create_widgets(self):
+        def on_configure(event):
+            file_canvas.configure(scrollregion=file_canvas.bbox("all"))
+
+        def open_file():
+            file = filedialog.askopenfilename(initialdir="/Documents", title="Select a CSV file",
+                                              filetypes=(("CSV Files", "*.csv"), ("All Files", "*.*")))
+            file_name = os.path.basename(file)
+            file_name_lbl.configure(text=file_name)
+
+            # Change CSV file delimiter to ","
+            # by detecting the current delimiter
+            # and creating a new file with the correct delimiter
+            with open(file, "r") as old_file:
+                sniffer = csv.Sniffer().sniff(old_file.read(1024))
+                dialect = sniffer.delimiter
+                old_file.seek(0)
+                csv_reader = csv.reader(old_file, delimiter=dialect)
+                with open("temp_file.csv", "w") as new_file:
+                    csv_writer = csv.writer(new_file, delimiter=",")
+                    for line in csv_reader:
+                        csv_writer.writerow(line)
+
+            file = "temp_file.csv"
+            df = pd.read_csv(file)
+            table = pdt.Table(table_frame, dataframe= df, width=672, height=423, showstatusbar= True, showtoolbar= True)
+            table.show()
+
+            # Create scrollbar for the table
+            vscrollbar = tk.Scrollbar(file_frame, orient=tk.VERTICAL)
+            vscrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            vscrollbar.configure(command= file_canvas.yview)
+            table_frame.bind("<Configure>", on_configure)
+            file_canvas.configure(yscrollcommand= vscrollbar.set)
+
+            table.redraw()
+
+        # Labels and buttons
+        back_button = tk.Button(self, text="<", font="Times 8",
+                                command=lambda: self.controller.showframe("start_page"))
+        open_file_btn = tk.Button(self, text="Open", command=open_file, width=18)
+        file_name_lbl = tk.Label(self, text="No CSV file has been selected",
+                                 font="Times 20", fg="black", bg="white")
+
+        file_frame = tk.Frame(self, width=750, height=470, bg="white")
+        file_canvas = tk.Canvas(file_frame, width= 750, height= 470)
+        file_canvas.pack(side= tk.LEFT, fill= tk.BOTH, expand= True)
+        table_frame = tk.Frame(file_canvas)
+        file_canvas.create_window(0, 0, anchor= tk.NW, window= table_frame)
+
+
+        self.canvas.create_window(0, 0, anchor=tk.NW, window=back_button)
+        self.canvas.create_text(20, 20, anchor=tk.NW, text="Select a file to analyze:", font="Times 15", fill="white")
+        self.canvas.create_window(216, 20, anchor=tk.NW, window=open_file_btn)
+        self.canvas.create_window(20, 50, anchor=tk.NW, window=file_name_lbl)
+        self.canvas.create_window(20, 100, anchor=tk.NW, window=file_frame)
 
 
 # Get the state of time of the day
@@ -233,7 +314,7 @@ def get_time():
 # Get the weather condition of Malang
 def get_weather():
     api_request = requests.get(
-        "http://api.openweathermap.org/data/2.5/weather?q=Malang&appid= #YOUR APP ID"
+        "http://api.openweathermap.org/data/2.5/weather?q=Malang&appid= YOUR APP ID"
     )
     api = json.loads(api_request.content)
     weather_condition = api["weather"][0]["main"]
@@ -247,7 +328,7 @@ def send_mail(recipient, subject, body):
     server.ehlo()
     server.starttls()
     server.ehlo()
-    server.login("YOUR EMAIL", "PASSWORD")
+    server.login("YOUR EMAIL", "YOUR PASSWORD")
     msg = f"Subject: {subject}\n\n{body}"
     server.sendmail("YOUR EMAIL",
                     recipient,
